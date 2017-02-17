@@ -41,18 +41,18 @@ add_definitions(${PCL_DEFINITIONS})
 #   iSpyDetectTouch.srv
 #)
 
-generate_messages(
-  DEPENDENCIES
-  sensor_msgs
-  actionlib_msgs
-  geometry_msgs
-  std_msgs
-)
+#generate_messages(
+#  DEPENDENCIES
+#  sensor_msgs
+#  actionlib_msgs
+#  geometry_msgs
+#  std_msgs
+#)
 
-catkin_package(
-  INCLUDE_DIRS include
-  DEPENDS message_runtime segbot_arm_perception actionlib_msgs geometry_msgs std_msgs
-)
+#catkin_package(
+#  INCLUDE_DIRS include
+#  DEPENDS message_runtime segbot_arm_perception actionlib_msgs geometry_msgs std_msgs
+#)
 
 include_directories(
   include
@@ -64,8 +64,8 @@ add_executable(demo_grasp_explore src/demo_grasp_explore.cpp)
 target_link_libraries(demo_grasp_explore ${catkin_LIBRARIES} )
 add_dependencies(demo_grasp_explore segbot_arm_manipulation_gencpp)
 
-install(DIRECTORY include/${PROJECT_NAME}/
-  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-  FILES_MATCHING PATTERN "*.h"
-  PATTERN ".svn" EXCLUDE)
-
+#install(DIRECTORY include/${PROJECT_NAME}/
+#  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+#  FILES_MATCHING PATTERN "*.h"
+#  PATTERN ".svn" EXCLUDE)
+#
