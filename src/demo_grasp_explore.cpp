@@ -176,7 +176,7 @@ double randomX() {
     double minXMove = minX - posX;
     double maxXMove = maxX - posX;
 
-    double rand = random(minXMove, maxXMove);
+    double rand = randfrom(minXMove, maxXMove);
     return rand;
 }
 
@@ -188,7 +188,7 @@ double randomY() {
     double minYMove = minY - posY;
     double maxYMove = maxY - posY;
 
-    double rand = random(minYMove, maxYMove);
+    double rand = randfrom(minYMove, maxYMove);
     return rand;
 }
 
