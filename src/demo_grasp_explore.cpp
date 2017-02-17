@@ -171,32 +171,32 @@ double randfrom(double min, double max)
 // Returns random x to move within bounding box (+/-)
 double randomX() {
     listenForArmData();
-    posX = current_pose.pose.position.x; 
+    double posX = current_pose.pose.position.x; 
 
-    minXMove = minX - posX;
-    maxXMove = maxX - posX;
+    double minXMove = minX - posX;
+    double maxXMove = maxX - posX;
 
-    rand = random(minXMove, maxXMove);
+    double rand = random(minXMove, maxXMove);
     return rand;
 }
 
 // Returns random y to move within bounding box (+/-)
 double randomY() {
     listenForArmData();
-    posY = current_pose.pose.position.y; 
+    double posY = current_pose.pose.position.y; 
 
-    minYMove = minY - posY;
-    maxYMove = maxY - posY;
+    double minYMove = minY - posY;
+    double maxYMove = maxY - posY;
 
-    rand = random(minYMove, maxYMove);
+    double rand = random(minYMove, maxYMove);
     return rand;
 }
 
-void moveRandom(n) {
-    randX = randomX();
+void moveRandom(ros::NodeHandle n) {
+    double randX = randomX();
     moveX(n, randX);
 
-    randY = randomY();
+    double randY = randomY();
     moveY(n, randY);
 }
 
@@ -210,7 +210,7 @@ void goToSafePose(ros::NodeHandle n){
 
 int main(int argc, char **argv) {
     // Intialize ROS with this node name
-    ros::init(argc, argv, "segbot_arm_explore");
+    ros::init(argc, argv, "demo_grasp_explore");
     
     ros::NodeHandle n;
 
@@ -306,7 +306,7 @@ int main(int argc, char **argv) {
             moveRandom(n);
             
             // Drop the object in its new location     
-        i   segbot_arm_manipulation::openHand();
+            segbot_arm_manipulation::openHand();
 
             // Home the arm
             segbot_arm_manipulation::homeArm(n);
