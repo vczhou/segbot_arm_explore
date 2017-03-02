@@ -8,7 +8,9 @@
 //action for grasping
 #include "segbot_arm_manipulation/TabletopGraspAction.h"
 
+// Own arm libraries
 #include <segbot_arm_manipulation/arm_utils.h>
+#include <segbot_arm_manipulation/arm_positions_db.h>
 
 #define NUM_JOINTS 8 //6+2 for the arm
 
@@ -43,8 +45,10 @@ double maxY = .3;
     w: 0.0413413878465
 */
 
-// Jaco vel publisher
+// Joint vel publisher
 ros::Publisher j_vel_pub_;
+// Cartesian vel publisher
+ros::Publisher c_vel_pub_;
 
 //global variables for storing data
 sensor_msgs::JointState current_state;
@@ -55,7 +59,6 @@ bool heardPose;
 
 //true if Ctrl-C is pressed
 bool g_caught_sigint=false;
-
 
 /* what happens when ctr-c is pressed */
 void sig_handler(int sig) {
@@ -321,6 +324,36 @@ bool shake(double vel) {
     stopSensoryDataCollection();
 }
 
+//TODO Find and move to best position to press object 
+void moveFindPressPos() {
+    
+}
+
+bool press(double velocity) {
+    // Move arm to slightly above object (ideally centered)
+    moveFindPressPos();
+
+    ros::Rate r(40);
+    geometry_msgs::TwistStamped T;
+        T.twist.linear.x= 0.0;
+    T.twist.linear.y= 0.0;
+    T.twist.linear.z= 0.0;
+    T.twist.angular.x= 0.0;
+    T.twist.angular.y= 0.0;
+    T.twist.angular.z= 0.0;
+    
+    geometry_msgs::Pose tool_pose_last = tool_pos_cur;
+    while(tool_pos_cur.position.z <= tool_pose_last.position.z){
+        T.twist.linear.z = -velocity;
+        c_vel_pub_.publish(T);
+        r.sleep();
+        tool_pose_last = tool_pos_cur;
+        ros::spinOnce();
+    } 
+    T.twist.linear.z= 0.0;
+    c_vel_pub_.publish(T);
+}
+
 void goToSafePose(ros::NodeHandle n){
     geometry_msgs::PoseStamped pose_st;
     pose_st.header.stamp = ros::Time(0);
@@ -340,6 +373,7 @@ int main(int argc, char **argv) {
     ros::Subscriber sub_tool = n.subscribe("/mico_arm_driver/out/tool_position", 1, toolpos_cb);
 
     // Publisher for cartesian velocity
+    c_vel_pub_ = n.advertise<geometry_msgs::TwistStamped>("/mico_arm_driver/in/cartesian_velocity", 2);
     j_vel_pub_ = n.advertise<jaco_msgs::JointVelocity>("/mico_arm_driver/in/joint_velocity", 2);
 
     //register ctrl-c
