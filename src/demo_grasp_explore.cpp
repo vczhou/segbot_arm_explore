@@ -194,9 +194,10 @@ double randomY() {
 
 void moveRandom(ros::NodeHandle n) {
     double randX = randomX();
-    moveX(n, randX);
-
     double randY = randomY();
+
+    ROS_INFO("Moving %f x, %f y", randX, randY);
+    moveX(n, randX);
     moveY(n, randY);
 }
 
@@ -227,7 +228,7 @@ int main(int argc, char **argv) {
     sensor_msgs::JointState joint_state_outofview;
     geometry_msgs::PoseStamped pose_outofview;
 
-    pressEnter("Demo starting...move the arm to a position where it is not occluding the table.");
+    pressEnter("Press enter: demo starting...move the arm to a position where it is not occluding the table.");
     
     //store out of table joint position
     listenForArmData();
@@ -285,7 +286,7 @@ int main(int argc, char **argv) {
         grasp_goal.target_object_cluster_index = largest_pc_index;
                 
         //send the goal
-        ROS_INFO("Sending goal to action server...");
+        ROS_INFO("Sending grasp goal to action server...");
         ac.sendGoal(grasp_goal);
         
         //block until the action is completed
@@ -294,24 +295,29 @@ int main(int argc, char **argv) {
         bool result = ac.waitForResult();
 
         actionlib::SimpleClientGoalState state = ac.getState();
-        ROS_INFO("Action finished: %s",state.toString().c_str());
+        ROS_INFO("Grasping action finished: %s",state.toString().c_str());
         if (state.state_ == actionlib::SimpleClientGoalState::ABORTED){\
             ROS_WARN("Grasping server aborted action...");
         }
         else {
             //lift and lower the object a bit, let it go and move back
+            ROS_INFO("Lifting object");
             lift(n,0.07);
 
             // Explore: Move object to new location
+            ROS_INFO("Moving to rabdom location");
             moveRandom(n);
             
-            // Drop the object in its new location     
+            // Drop the object in its new location
+            ROS_INFO("Dropping object");     
             segbot_arm_manipulation::openHand();
 
             // Home the arm
+            ROS_INFO("Homing arm");
             segbot_arm_manipulation::homeArm(n);
             
             // Move out of view and try again
+            ROS_INFO("Moving to out of view position");
             segbot_arm_manipulation::moveToJointState(n,joint_state_outofview);
         }
         
