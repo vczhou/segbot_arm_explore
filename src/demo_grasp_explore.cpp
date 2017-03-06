@@ -8,7 +8,9 @@
 //action for grasping
 #include "segbot_arm_manipulation/TabletopGraspAction.h"
 
+// Own arm libraries
 #include <segbot_arm_manipulation/arm_utils.h>
+#include <segbot_arm_manipulation/arm_positions_db.h>
 
 #define NUM_JOINTS 8 //6+2 for the arm
 
@@ -43,6 +45,11 @@ double maxY = .3;
     w: 0.0413413878465
 */
 
+// Joint vel publisher
+ros::Publisher j_vel_pub_;
+// Cartesian vel publisher
+ros::Publisher c_vel_pub_;
+
 //global variables for storing data
 sensor_msgs::JointState current_state;
 bool heardJoinstState;
@@ -52,7 +59,6 @@ bool heardPose;
 
 //true if Ctrl-C is pressed
 bool g_caught_sigint=false;
-
 
 /* what happens when ctr-c is pressed */
 void sig_handler(int sig) {
@@ -201,12 +207,158 @@ void moveRandom(ros::NodeHandle n) {
     moveY(n, randY);
 }
 
+void moveToShakePos(ros:NodeHandle n) {
+    std::string j_pos_filename = ros::package::getPath("learning_object_dynamics")+"/data/jointspace_position_db.txt";
+    std::string c_pos_filename = ros::package::getPath("learning_object_dynamics")+"/data/toolspace_position_db.txt";
+    
+    ArmPositionDB *posDB = new ArmPositionDB(j_pos_filename, c_pos_filename);
+
+    if (posDB->hasCarteseanPosition("shake")) {
+        ROS_INFO("Moving to shake starting position...");
+        geometry_msgs::PoseStamped shake_pose = posDB->getToolPositionStamped("shake","/mico_link_base");
+            
+        // Now go to the pose
+        segbot_arm_manipulation::moveToPoseMoveIt(n, shake_pose);
+        segbot_arm_manipulation::moveToPoseMoveIt(n, shake_pose);
+
+    } else {
+        ROS_ERROR("[demo_shake_explore.cpp] Cannot move arm to shaking position!");
+    }   
+}
+
+bool shake(double vel) {
+    int iterations = 2;
+    int count = 0;
+    double step = .25;
+    double distance = 40; //degrees
+    if(vel > 1)
+        vel = 1;
+    jaco_msgs::JointVelocity T;
+    ros::Rate r(4);
+    T.joint1 = 0.0;
+    T.joint2 = 0.0;
+    T.joint3 = 0.0;
+    T.joint4 = 0.0;
+    T.joint5 = 0.0;
+    T.joint6 = 0.0;
+
+    vel *= 180/3.1459;
+    int sign = 1;
+    double tempDistance;
+    bool firstOrLast = true;
+    while(count < iterations){
+        for(int i = 0; i < distance/vel/step; i++){
+            ROS_INFO("Got vel: %f",vel);
+            
+            T.joint3 = vel;
+            T.joint4 = vel;
+            T.joint5 = vel;
+            T.joint6 = 4*vel;
+            
+            j_vel_pub_.publish(T);
+            r.sleep();
+
+        }
+        T.joint4 = 0.0;
+        T.joint5 = 0.0;
+        T.joint6 = 0.0;
+        
+        j_vel_pub_.publish(T);
+        for(int i = 0; i < distance/vel/step; i++){
+            ROS_INFO("Got vel: %f",vel);
+            
+            T.joint3 = -vel;
+            T.joint4 = -vel;
+            T.joint5 = -vel;
+            T.joint6 = 4*vel;
+            
+            j_vel_pub_.publish(T);
+            r.sleep();
+        }
+        T.joint3 = 0.0;
+        T.joint4 = 0.0;
+        T.joint5 = 0.0;
+        T.joint6 = 0.0;
+        
+        j_vel_pub_.publish(T);
+        for(int i = 0; i < distance/vel/step; i++){
+            ROS_INFO("Got vel: %f",vel);
+            T.joint3 = -vel;
+            T.joint4 = -vel;
+            T.joint5 = -vel;
+            T.joint6 = -4*vel;
+            
+            j_vel_pub_.publish(T);
+            r.sleep();
+        }
+        T.joint3 = 0.0;
+        T.joint4 = 0.0;
+        T.joint5 = 0.0;
+        T.joint6 = 0.0;
+        
+        j_vel_pub_.publish(T);
+        for(int i = 0; i < distance/vel/step; i++){
+            ROS_INFO("Got vel: %f",vel);
+            T.joint3 = vel;
+            T.joint4 = vel;
+            T.joint5 = vel;
+            T.joint6 = -4*vel;
+            
+            j_vel_pub_.publish(T);
+            r.sleep();
+        }
+        T.joint3 = 0.0;
+        T.joint4 = 0.0;
+        T.joint5 = 0.0;
+        T.joint6 = 0.0;
+        
+        j_vel_pub_.publish(T);
+        count++;
+    }
+    T.joint3 = 0.0;
+    T.joint4 = 0.0;
+    T.joint5 = 0.0;
+    T.joint6 = 0.0;
+    
+    j_vel_pub_.publish(T);
+    clearMsgs(.4);
+    stopSensoryDataCollection();
+}
+
+//TODO Find and move to best position to press object 
+void moveFindPressPos() {
+    
+}
+
+bool press(double velocity) {
+    // Move arm to slightly above object (ideally centered)
+    moveFindPressPos();
+
+    ros::Rate r(40);
+    geometry_msgs::TwistStamped T;
+        T.twist.linear.x= 0.0;
+    T.twist.linear.y= 0.0;
+    T.twist.linear.z= 0.0;
+    T.twist.angular.x= 0.0;
+    T.twist.angular.y= 0.0;
+    T.twist.angular.z= 0.0;
+    
+    geometry_msgs::Pose tool_pose_last = tool_pos_cur;
+    while(tool_pos_cur.position.z <= tool_pose_last.position.z){
+        T.twist.linear.z = -velocity;
+        c_vel_pub_.publish(T);
+        r.sleep();
+        tool_pose_last = tool_pos_cur;
+        ros::spinOnce();
+    } 
+    T.twist.linear.z= 0.0;
+    c_vel_pub_.publish(T);
+}
+
 void goToSafePose(ros::NodeHandle n){
     geometry_msgs::PoseStamped pose_st;
     pose_st.header.stamp = ros::Time(0);
     pose_st.header.frame_id = "mico_link_base";
-    
-    
 }
 
 int main(int argc, char **argv) {
@@ -220,6 +372,10 @@ int main(int argc, char **argv) {
     
     //create subscriber to tool position topic
     ros::Subscriber sub_tool = n.subscribe("/mico_arm_driver/out/tool_position", 1, toolpos_cb);
+
+    // Publisher for cartesian velocity
+    c_vel_pub_ = n.advertise<geometry_msgs::TwistStamped>("/mico_arm_driver/in/cartesian_velocity", 2);
+    j_vel_pub_ = n.advertise<jaco_msgs::JointVelocity>("/mico_arm_driver/in/joint_velocity", 2);
 
     //register ctrl-c
     signal(SIGINT, sig_handler);
@@ -307,6 +463,10 @@ int main(int argc, char **argv) {
             // Explore: Move object to new location
             ROS_INFO("Moving to rabdom location");
             moveRandom(n);
+
+            // Shake object
+            moveToShakePos();
+            shake(1.5);
             
             // Drop the object in its new location
             ROS_INFO("Dropping object");     
