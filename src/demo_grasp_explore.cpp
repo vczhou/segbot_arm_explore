@@ -1,6 +1,11 @@
 #include <ros/ros.h>
+#include <ros/package.h>
 #include <signal.h>
+
+// Subscriber msgs
 #include <sensor_msgs/JointState.h>
+#include <geometry_msgs/TwistStamped.h>
+#include <jaco_msgs/JointVelocity.h>
 
 //srv for talking to table_object_detection_node.cpp
 #include "segbot_arm_perception/TabletopPerception.h"
@@ -19,6 +24,9 @@ double minX = .25;
 double maxX = .5;
 double minY = -.3;
 double maxY = .3;
+
+// TODO actually initialize it somewhere
+geometry_msgs::Pose tool_pos_cur;
 
 //mico joint state safe
 //-2.3321322971114142, -1.6372086401627464, -0.28393691436045176, -2.164605083475533, 0.7496982226688764, 4.682638807847723
@@ -70,7 +78,6 @@ void sig_handler(int sig) {
 
 // Joint state cb
 void joint_state_cb (const sensor_msgs::JointStateConstPtr& input) {
-    
     if (input->position.size() == NUM_JOINTS){
         current_state = *input;
         heardJoinstState = true;
@@ -79,13 +86,13 @@ void joint_state_cb (const sensor_msgs::JointStateConstPtr& input) {
 
 // Toolpos cb
 void toolpos_cb (const geometry_msgs::PoseStamped &msg) {
-  current_pose = msg;
-  heardPose = true;
+    tool_pos_cur = msg.pose;
+    current_pose = msg;
+    heardPose = true;
 }
 
 // Blocking call to listen for arm data (in this case, joint states)
 void listenForArmData(){
-    
     heardJoinstState = false;
     heardPose = false;
     ros::Rate r(10.0);
@@ -207,9 +214,9 @@ void moveRandom(ros::NodeHandle n) {
     moveY(n, randY);
 }
 
-void moveToShakePos(ros:NodeHandle n) {
-    std::string j_pos_filename = ros::package::getPath("learning_object_dynamics")+"/data/jointspace_position_db.txt";
-    std::string c_pos_filename = ros::package::getPath("learning_object_dynamics")+"/data/toolspace_position_db.txt";
+void moveToShakePos(ros::NodeHandle n) {
+    std::string j_pos_filename = ros::package::getPath("segbot_arm_explore")+"/data/jointspace_position_db.txt";
+    std::string c_pos_filename = ros::package::getPath("segbot_arm_explore")+"/data/toolspace_position_db.txt";
     
     ArmPositionDB *posDB = new ArmPositionDB(j_pos_filename, c_pos_filename);
 
@@ -321,8 +328,6 @@ bool shake(double vel) {
     T.joint6 = 0.0;
     
     j_vel_pub_.publish(T);
-    clearMsgs(.4);
-    stopSensoryDataCollection();
 }
 
 //TODO Find and move to best position to press object 
@@ -465,7 +470,7 @@ int main(int argc, char **argv) {
             moveRandom(n);
 
             // Shake object
-            moveToShakePos();
+            moveToShakePos(n);
             shake(1.5);
             
             // Drop the object in its new location
