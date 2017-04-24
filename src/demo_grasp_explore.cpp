@@ -1,6 +1,11 @@
 #include <ros/ros.h>
+#include <ros/package.h>
 #include <signal.h>
+
+// Subscriber msgs
 #include <sensor_msgs/JointState.h>
+#include <geometry_msgs/TwistStamped.h>
+#include <jaco_msgs/JointVelocity.h>
 
 //srv for talking to table_object_detection_node.cpp
 #include "segbot_arm_perception/TabletopPerception.h"
@@ -20,7 +25,7 @@ double maxX = .5;
 double minY = -.3;
 double maxY = .3;
 
-// TODO Add get from bag, test joint location, add bags to repos
+// TODO test joint locationt
 
 //mico joint state safe
 //-2.3321322971114142, -1.6372086401627464, -0.28393691436045176, -2.164605083475533, 0.7496982226688764, 4.682638807847723
@@ -72,7 +77,6 @@ void sig_handler(int sig) {
 
 // Joint state cb
 void joint_state_cb (const sensor_msgs::JointStateConstPtr& input) {
-    
     if (input->position.size() == NUM_JOINTS){
         current_state = *input;
         heardJoinstState = true;
@@ -81,13 +85,13 @@ void joint_state_cb (const sensor_msgs::JointStateConstPtr& input) {
 
 // Toolpos cb
 void toolpos_cb (const geometry_msgs::PoseStamped &msg) {
-  current_pose = msg;
-  heardPose = true;
+    tool_pos_cur = msg.pose;
+    current_pose = msg;
+    heardPose = true;
 }
 
 // Blocking call to listen for arm data (in this case, joint states)
 void listenForArmData(){
-    
     heardJoinstState = false;
     heardPose = false;
     ros::Rate r(10.0);
@@ -235,15 +239,16 @@ double randomY() {
 
 void moveRandom(ros::NodeHandle n) {
     double randX = randomX();
-    moveX(n, randX);
-
     double randY = randomY();
+
+    ROS_INFO("Moving %f x, %f y", randX, randY);
+    moveX(n, randX);
     moveY(n, randY);
 }
 
-void moveToShakePos(ros:NodeHandle n) {
-    std::string j_pos_filename = ros::package::getPath("learning_object_dynamics")+"/data/jointspace_position_db.txt";
-    std::string c_pos_filename = ros::package::getPath("learning_object_dynamics")+"/data/toolspace_position_db.txt";
+void moveToShakePos(ros::NodeHandle n) {
+    std::string j_pos_filename = ros::package::getPath("segbot_arm_explore")+"/data/jointspace_position_db.txt";
+    std::string c_pos_filename = ros::package::getPath("segbot_arm_explore")+"/data/toolspace_position_db.txt";
     
     ArmPositionDB *posDB = new ArmPositionDB(j_pos_filename, c_pos_filename);
 
@@ -375,8 +380,6 @@ bool shake(double vel) {
     T.joint6 = 0.0;
     
     j_vel_pub_.publish(T);
-    clearMsgs(.4);
-    stopSensoryDataCollection();
 }
 
 //TODO Find and move to best position to press object 
@@ -462,7 +465,7 @@ int main(int argc, char **argv) {
     sensor_msgs::JointState joint_state_outofview;
     geometry_msgs::PoseStamped pose_outofview;
 
-    pressEnter("Demo starting...move the arm to a position where it is not occluding the table.");
+    pressEnter("Press enter: demo starting...move the arm to a position where it is not occluding the table.");
     
     //store out of table joint position
     listenForArmData();
@@ -520,7 +523,7 @@ int main(int argc, char **argv) {
         grasp_goal.target_object_cluster_index = largest_pc_index;
                 
         //send the goal
-        ROS_INFO("Sending goal to action server...");
+        ROS_INFO("Sending grasp goal to action server...");
         ac.sendGoal(grasp_goal);
         
         //block until the action is completed
@@ -529,29 +532,34 @@ int main(int argc, char **argv) {
         bool result = ac.waitForResult();
 
         actionlib::SimpleClientGoalState state = ac.getState();
-        ROS_INFO("Action finished: %s",state.toString().c_str());
+        ROS_INFO("Grasping action finished: %s",state.toString().c_str());
         if (state.state_ == actionlib::SimpleClientGoalState::ABORTED){\
             ROS_WARN("Grasping server aborted action...");
         }
         else {
             //lift and lower the object a bit, let it go and move back
             lift(n, 0.3);
+            ROS_INFO("Lifting object");
 
             // Shake object
-            moveToShakePos();
+            moveToShakePos(n);
             shake(1.5);
 
             // Explore: Move object to new location
+            ROS_INFO("Moving to random location");
             moveRandom(n);
-            
+
             // Drop the object in its new location     
+            ROS_INFO("Dropping object");     
             lift(n, -.3);
             segbot_arm_manipulation::openHand();
 
             // Home the arm
+            ROS_INFO("Homing arm");
             segbot_arm_manipulation::homeArm(n);
             
             // Move out of view and try again
+            ROS_INFO("Moving to out of view position");
             segbot_arm_manipulation::moveToJointState(n,joint_state_outofview);
         }
         
