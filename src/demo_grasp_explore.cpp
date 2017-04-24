@@ -20,6 +20,8 @@ double maxX = .5;
 double minY = -.3;
 double maxY = .3;
 
+// TODO Add get from bag, test joint location, add bags to repos
+
 //mico joint state safe
 //-2.3321322971114142, -1.6372086401627464, -0.28393691436045176, -2.164605083475533, 0.7496982226688764, 4.682638807847723
 
@@ -117,6 +119,39 @@ void pressEnter(std::string message){
     }
 }
 
+sensor_msgs::JointState getStateFromBag(std::string bagName){
+    rosbag::Bag bag;
+    std::string path = ros::package::getPath("segbot_arm_explore");
+    
+    bag.open(path + "/positions/" + bagName + ".bag", rosbag::bagmode::Read);
+    
+    rosbag::View view(bag, rosbag::TopicQuery("joint_states"));
+    sensor_msgs::JointState fromFile;
+    BOOST_FOREACH(rosbag::MessageInstance const m, view){
+        sensor_msgs::JointState::ConstPtr traj = m.instantiate<sensor_msgs::JointState>();
+        if (traj != NULL){
+            fromFile = *traj;
+        }
+    }
+    bag.close();
+    
+    /*actionlib::SimpleActionClient<jaco_msgs::ArmJointAnglesAction> ac("/mico_arm_driver/joint_angles/arm_joint_angles", true);
+    jaco_msgs::ArmJointAnglesGoal goal;
+    goal.angles.joint1 = fromFile.position[0];
+    goal.angles.joint2 = fromFile.position[1];
+    goal.angles.joint3 = fromFile.position[2];
+    goal.angles.joint4 = fromFile.position[3];
+    goal.angles.joint5 = fromFile.position[4];
+    goal.angles.joint6 = fromFile.position[5];
+    //ROS_INFO("Joint6: %f", fromFile.position[5]);
+    ac.waitForServer();
+    ac.sendGoal(goal);
+    ROS_INFO("Trajectory goal sent!");
+    ac.waitForResult();
+    */
+    return fromFile;
+}
+
 void moveX(ros::NodeHandle n, double x){
     listenForArmData();
     
@@ -212,6 +247,8 @@ void moveToShakePos(ros:NodeHandle n) {
     
     ArmPositionDB *posDB = new ArmPositionDB(j_pos_filename, c_pos_filename);
 
+    /*
+    // Move to gemoetry pose (may twist joints into weird position) 
     if (posDB->hasCarteseanPosition("shake")) {
         ROS_INFO("Moving to shake starting position...");
         geometry_msgs::PoseStamped shake_pose = posDB->getToolPositionStamped("shake","/mico_link_base");
@@ -222,7 +259,25 @@ void moveToShakePos(ros:NodeHandle n) {
 
     } else {
         ROS_ERROR("[demo_shake_explore.cpp] Cannot move arm to shaking position!");
-    }   
+    }
+    */
+
+    // Move to joint pose
+    if(posDB->hasJointPosition("shake")) {
+        ROS_INFO("Moving to shake starting position...");
+        std::vector<float> shake_pos = posDB->getJointPosition("shake", "/mico_link_base");
+        sensor_msgs::JointState joint_msg;
+        for(int i = 1; i <= 6; i = i + 1) {
+            joint_msg.push_back(shake_pos[i]);
+        }
+        goToLocation(shake_pos);
+    } else {
+        ROS_ERROR("[demo_shake_explore.cpp] Cannot move arm to shaking position!");
+    }
+
+    // Move to ros bog position
+    sensor_msgs::JointState loc = getStateFromBag("drop_right");
+    goToLocation(loc);   
 }
 
 bool shake(double vel) {
@@ -360,6 +415,30 @@ void goToSafePose(ros::NodeHandle n){
     pose_st.header.frame_id = "mico_link_base";
 }
 
+bool goToLocation(sensor_msgs::JointState js){
+    moveit_utils::AngularVelCtrl srv;
+    srv.request.state = js;
+    /*if(angular_client.call(srv))
+        ROS_INFO("Sending angular commands");
+    else
+        ROS_INFO("Cannot contact angular velocity service. Is it running?");
+    clearMsgs(.5);
+    return srv.response.success;*/
+    actionlib::SimpleActionClient<jaco_msgs::ArmJointAnglesAction> ac("/mico_arm_driver/joint_angles/arm_joint_angles", true);
+    jaco_msgs::ArmJointAnglesGoal goal;
+    goal.angles.joint1 = js.position[0];
+    goal.angles.joint2 = js.position[1];
+    goal.angles.joint3 = js.position[2];
+    goal.angles.joint4 = js.position[3];
+    goal.angles.joint5 = js.position[4];
+    goal.angles.joint6 = js.position[5];
+    //ROS_INFO("Joint6: %f", fromFile.position[5]);
+    ac.waitForServer();
+    ac.sendGoal(goal);
+    ROS_INFO("Trajectory goal sent");
+    ac.waitForResult();
+}
+
 int main(int argc, char **argv) {
     // Intialize ROS with this node name
     ros::init(argc, argv, "demo_grasp_explore");
@@ -456,16 +535,17 @@ int main(int argc, char **argv) {
         }
         else {
             //lift and lower the object a bit, let it go and move back
-            lift(n,0.07);
-
-            // Explore: Move object to new location
-            moveRandom(n);
+            lift(n, 0.3);
 
             // Shake object
             moveToShakePos();
             shake(1.5);
+
+            // Explore: Move object to new location
+            moveRandom(n);
             
             // Drop the object in its new location     
+            lift(n, -.3);
             segbot_arm_manipulation::openHand();
 
             // Home the arm
