@@ -1,6 +1,11 @@
 #include <ros/ros.h>
 #include <ros/package.h>
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
 #include <signal.h>
+#include <vector>
+#include <boost/filesystem.hpp>
+#include <boost/foreach.hpp>
 
 // Subscriber msgs
 #include <sensor_msgs/JointState.h>
@@ -62,6 +67,7 @@ sensor_msgs::JointState current_state;
 bool heardJoinstState;
 
 geometry_msgs::PoseStamped current_pose;
+geometry_msgs::Pose tool_pos_cur;
 bool heardPose;
 
 //true if Ctrl-C is pressed
@@ -190,6 +196,36 @@ void moveRight(ros::NodeHandle n, double y) {
     moveY(n, -y);
 }
 
+void goToSafePose(ros::NodeHandle n){
+    geometry_msgs::PoseStamped pose_st;
+    pose_st.header.stamp = ros::Time(0);
+    pose_st.header.frame_id = "mico_link_base";
+}
+
+bool goToLocation(sensor_msgs::JointState js){
+    moveit_utils::AngularVelCtrl srv;
+    srv.request.state = js;
+    /*if(angular_client.call(srv))
+        ROS_INFO("Sending angular commands");
+    else
+        ROS_INFO("Cannot contact angular velocity service. Is it running?");
+    clearMsgs(.5);
+    return srv.response.success;*/
+    actionlib::SimpleActionClient<jaco_msgs::ArmJointAnglesAction> ac("/mico_arm_driver/joint_angles/arm_joint_angles", true);
+    jaco_msgs::ArmJointAnglesGoal goal;
+    goal.angles.joint1 = js.position[0];
+    goal.angles.joint2 = js.position[1];
+    goal.angles.joint3 = js.position[2];
+    goal.angles.joint4 = js.position[3];
+    goal.angles.joint5 = js.position[4];
+    goal.angles.joint6 = js.position[5];
+    //ROS_INFO("Joint6: %f", fromFile.position[5]);
+    ac.waitForServer();
+    ac.sendGoal(goal);
+    ROS_INFO("Trajectory goal sent");
+    ac.waitForResult();
+}
+
 void lift(ros::NodeHandle n, double z) {
     listenForArmData();
     
@@ -255,7 +291,7 @@ void moveToShakePos(ros::NodeHandle n) {
     /*
     // Move to gemoetry pose (may twist joints into weird position) 
     if (posDB->hasCarteseanPosition("shake")) {
-        ROS_INFO("Moving to shake starting position...");
+        ROS_INFO("Moving to shake starting position by geometry pose...");
         geometry_msgs::PoseStamped shake_pose = posDB->getToolPositionStamped("shake","/mico_link_base");
             
         // Now go to the pose
@@ -268,19 +304,21 @@ void moveToShakePos(ros::NodeHandle n) {
     */
 
     // Move to joint pose
-    if(posDB->hasJointPosition("shake")) {
-        ROS_INFO("Moving to shake starting position...");
-        std::vector<float> shake_pos = posDB->getJointPosition("shake", "/mico_link_base");
+    /*if(posDB->hasJointPosition("shake")) {
+        ROS_INFO("Moving to shake starting position by joint pose...");
+        std::vector<float> shake_pos = posDB->getJointPosition("shake");
         sensor_msgs::JointState joint_msg;
         for(int i = 1; i <= 6; i = i + 1) {
-            joint_msg.push_back(shake_pos[i]);
+            joint_msg.position.push_back(shake_pos[i]);
         }
-        goToLocation(shake_pos);
+        goToLocation(joint_msg);
     } else {
         ROS_ERROR("[demo_shake_explore.cpp] Cannot move arm to shaking position!");
     }
+    */
 
     // Move to ros bog position
+    ROS_INFO("Moving to shake staring position by ros bag position...");
     sensor_msgs::JointState loc = getStateFromBag("drop_right");
     goToLocation(loc);   
 }
@@ -412,35 +450,6 @@ bool press(double velocity) {
     c_vel_pub_.publish(T);
 }
 
-void goToSafePose(ros::NodeHandle n){
-    geometry_msgs::PoseStamped pose_st;
-    pose_st.header.stamp = ros::Time(0);
-    pose_st.header.frame_id = "mico_link_base";
-}
-
-bool goToLocation(sensor_msgs::JointState js){
-    moveit_utils::AngularVelCtrl srv;
-    srv.request.state = js;
-    /*if(angular_client.call(srv))
-        ROS_INFO("Sending angular commands");
-    else
-        ROS_INFO("Cannot contact angular velocity service. Is it running?");
-    clearMsgs(.5);
-    return srv.response.success;*/
-    actionlib::SimpleActionClient<jaco_msgs::ArmJointAnglesAction> ac("/mico_arm_driver/joint_angles/arm_joint_angles", true);
-    jaco_msgs::ArmJointAnglesGoal goal;
-    goal.angles.joint1 = js.position[0];
-    goal.angles.joint2 = js.position[1];
-    goal.angles.joint3 = js.position[2];
-    goal.angles.joint4 = js.position[3];
-    goal.angles.joint5 = js.position[4];
-    goal.angles.joint6 = js.position[5];
-    //ROS_INFO("Joint6: %f", fromFile.position[5]);
-    ac.waitForServer();
-    ac.sendGoal(goal);
-    ROS_INFO("Trajectory goal sent");
-    ac.waitForResult();
-}
 
 int main(int argc, char **argv) {
     // Intialize ROS with this node name
@@ -542,8 +551,8 @@ int main(int argc, char **argv) {
             ROS_INFO("Lifting object");
 
             // Shake object
-            moveToShakePos(n);
-            shake(1.5);
+            //moveToShakePos(n);
+            //shake(1.5);
 
             // Explore: Move object to new location
             ROS_INFO("Moving to random location");
